@@ -1,0 +1,22 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "title": "new ipad",
+        "description": "登录rpc 其他协议 属于半协议产品（仅供内部交流学习使用!）.\n",
+        "version": "1.0.0",
+        "contact": {
+            "email": "astaxie@gmail.com"
+        }
+    },
+    "basePath": "/api",
+    "paths": {
+        "/ws/test": {
+            "get": {
+                "tags": [
+                    "ws"
+                ],
+                "summary": "websocket init"
+            }
+        }
+    }
+}
