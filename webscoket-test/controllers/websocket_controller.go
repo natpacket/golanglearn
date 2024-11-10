@@ -29,19 +29,26 @@ type WebSocketController struct {
 	conn *websocket.Conn
 }
 
-func (w *WebSocketController) OnMessage(text string) {
-	logger.Printf("OnMessage: %s %d", text, w.conn)
+func (w *WebSocketController) OnMessage(text []byte) {
+	logger.Printf("OnMessage: %s %d", string(text), w.conn)
+	service.GetWSMessageService().ProcessMessage(w.conn, text)
 
 }
 
 func (w *WebSocketController) OnClose(code int, text string) error {
 	logger.Printf("OnClose: %s %d", text, code)
+	service.GetSessionService().RemoveSession(w.conn)
+	err := w.conn.Close()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (w *WebSocketController) OnError(err error) {
 	logger.Printf("OnError: %v", err)
-
+	service.GetSessionService().RemoveSession(w.conn)
+	_ = w.conn.Close()
 }
 
 // @Summary websocket init
@@ -59,7 +66,6 @@ func (w *WebSocketController) WebSocketCtrl() {
 
 	w.conn = conn
 	conn.SetCloseHandler(w.OnClose)
-
 	//调用连接的WriteMessage和ReadMessage方法以一片字节发送和接收消息。实现如何回显消息：
 	//p是一个[]字节，messageType是一个值为websocket.BinaryMessage或websocket.TextMessage的int。
 	for {
@@ -69,7 +75,7 @@ func (w *WebSocketController) WebSocketCtrl() {
 			return
 		}
 		if messageType == websocket.TextMessage {
-			service.GetWSMessageService().ProcessMessage(conn, msg)
+			w.OnMessage(msg)
 		}
 	}
 }

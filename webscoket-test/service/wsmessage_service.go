@@ -39,11 +39,13 @@ func (w *WSMessageService) ProcessMessage(conn *websocket.Conn, data []byte) {
 	msgType := wsMessage.MsgType
 	switch msgType {
 	case "register":
-
 		GetSessionService().registerSession(conn, wsMessage.Data)
-
 		break
 	case "heart":
+		GetSessionService().addSessionToActiveQueue(
+			&model.WSSession{
+				Conn: conn,
+			})
 		break
 	default:
 		data := wsMessage.Data

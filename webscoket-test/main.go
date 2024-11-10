@@ -1,15 +1,23 @@
 package main
 
 import (
+	logger "github.com/sirupsen/logrus"
+	"webscoket-test/model"
 	_ "webscoket-test/routers"
-	"webscoket-test/test"
+	"webscoket-test/service"
 )
 
 func main() {
+	go func() {
+		service.InitSchedule()
+	}()
 	//beego.BConfig.WebConfig.DirectoryIndex = true
 	//beego.BConfig.WebConfig.StaticDir["/"] = "swagger"
 	////beego.SeySetLogFuncCall(false)
 	////自定义错误页面
 	//beego.Run()
-	test.TestMysql()
+
+	deviceInfo := model.FindDeviceInfoByUserName("faker-username")
+	logger.Infof("deviceInfo %s", deviceInfo.Name)
+	select {}
 }

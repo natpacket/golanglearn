@@ -3,9 +3,11 @@ module webscoket-test
 go 1.20
 
 require (
+	github.com/adrianbrad/queue v1.3.0
 	github.com/beego/beego/v2 v2.3.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/orcaman/concurrent-map/v2 v2.0.1
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.9.3
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/gorm v1.25.12

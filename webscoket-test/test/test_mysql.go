@@ -3,6 +3,7 @@ package test
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/adrianbrad/queue"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"time"
@@ -41,7 +42,7 @@ func init() {
 
 func TestMysql() {
 
-	deviceInfo := &DeviceInfo{}
+	deviceInfo := DeviceInfo{}
 	DB.First(&deviceInfo, "username = ?", "faker-username")
 	arr, _ := json.Marshal(deviceInfo)
 	println(string(arr))
@@ -78,4 +79,36 @@ func TestMysql() {
 		return
 	}
 	fmt.Printf("使用 json: %v", newUser)
+
+	elems := []int{1, 2, 3}
+
+	blockingQueue := queue.NewBlocking(elems)
+
+	containsTwo := blockingQueue.Contains(2)
+	fmt.Println(containsTwo) // true
+
+	iterator := blockingQueue.Iterator()
+	for data := range iterator {
+		fmt.Printf("%v\n", data)
+	}
+
+	size := blockingQueue.Size()
+	fmt.Println(size) // 2
+
+	empty := blockingQueue.IsEmpty()
+	fmt.Println(empty) // false
+
+	if err := blockingQueue.Offer(1); err != nil {
+		// handle err
+		fmt.Printf("%v", err)
+	}
+	size = blockingQueue.Size()
+	fmt.Println(size) // 2
+
+	elem, err := blockingQueue.Get()
+	if err != nil {
+		// handle err
+	}
+
+	fmt.Println("elem: ", elem) // elem: 2
 }

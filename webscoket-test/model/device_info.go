@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"time"
+	"webscoket-test/database"
+)
 
 type DeviceInfo struct {
 	Name           string
@@ -12,4 +15,10 @@ type DeviceInfo struct {
 
 func (DeviceInfo) TableName() string {
 	return "acq_finder_pc_device"
+}
+
+func FindDeviceInfoByUserName(username string) *DeviceInfo {
+	deviceInfo := &DeviceInfo{}
+	database.DB.First(deviceInfo, "username = ?", username)
+	return deviceInfo
 }
