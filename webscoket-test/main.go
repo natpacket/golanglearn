@@ -17,7 +17,7 @@ func main() {
 	////自定义错误页面
 	//beego.Run()
 
-	deviceInfo := model.FindDeviceInfoByUserName("faker-username")
-	logger.Infof("deviceInfo %s", deviceInfo.Name)
+	deviceInfo, err := model.FindDeviceInfoByUserName("faker-username")
+	logger.Infof("deviceInfo %s ,%v", deviceInfo.Name, err)
 	select {}
 }

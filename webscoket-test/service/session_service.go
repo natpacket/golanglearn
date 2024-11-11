@@ -75,123 +75,91 @@ func (s *SessionService) SaveActiveSession(session *model.WSSession) error {
 	return s.ActiveSessionQueue.Offer(session)
 }
 
-func (s *SessionService) RestoreActiveSession(session *model.WSSession) error {
-
-	return s.SaveActiveSession(session)
-}
-
 func (s *SessionService) GetSession(username string, status int) (*model.WSSession, error) {
 
 	session, err := s.GetSessionWithName(username)
 	if err != nil {
-		for i := 0; i < 50; i++ {
 
-			session, err = s.SessionQueue.Get()
-			if err != nil {
-				continue
-			}
-			if session.DeviceInfo.Status == status {
-				return session, nil
-			}
-			//不符合条件归还
-			_ = s.RestoreSession(session)
+		session, err = s.GetSessionWithStatus(status)
+		if err != nil {
+			return nil, err
+		} else {
+			s.RemoveSession(session)
+			return session, nil
 		}
+
+	} else {
+		s.RemoveSession(session)
 	}
+
 	return session, nil
 }
 
 func (s *SessionService) GetSessionWithName(username string) (*model.WSSession, error) {
-	var session *model.WSSession
-	iterator := s.SessionQueue.Iterator()
+	iterator := s.SessionQueue.IteratorWithNoRemoveItem()
 	for e := range iterator {
 		if e.DeviceInfo.Name == username {
-			//取出但不回收
-			session = e
-			continue
+			return e, nil
 		}
-
-		//迭代器取出全部元素，现在回收
-		_ = s.RestoreSession(e)
-		//if err != nil {
-		//	fmt.Printf("添加元素失败，原因: %v",err)
-		//}
 	}
-
-	if session != nil {
-		return session, nil
-	}
-
 	return nil, errors.New("GetSessionWithName: session is nil")
 }
 
 func (s *SessionService) GetSessionWithStatus(status int) (*model.WSSession, error) {
 
-	var session *model.WSSession
-	iterator := s.SessionQueue.Iterator()
+	iterator := s.SessionQueue.IteratorWithNoRemoveItem()
 	for e := range iterator {
 		if e.DeviceInfo.Status == status {
-			//取出但不回收
-			session = e
-			continue
+			return e, nil
 		}
-
-		//迭代器取出全部元素，现在回收
-		_ = s.RestoreSession(e)
-		//if err != nil {
-		//	fmt.Printf("添加元素失败，原因: %v",err)
-		//}
 	}
+
+	return nil, errors.New("GetSessionWithStatus: session is nil")
+}
+
+func (s *SessionService) RemoveSessionWithConn(conn *websocket.Conn) {
+	session, err := s.FindSessionWithConn(conn)
+	if err != nil {
+		s.RemoveSession(session)
+
+	}
+}
+func (s *SessionService) RemoveSession(session *model.WSSession) {
 	if session != nil {
-		return session, nil
+		s.SessionQueue.Remove(session)
 	}
-
-	return session, errors.New("GetSessionWithStatus: session is nil")
 }
 
-func (s *SessionService) RemoveSession(conn *websocket.Conn) {
+func (s *SessionService) ContainsSession(session *model.WSSession) bool {
+	return s.SessionQueue.Contains(session)
+}
 
-	iterator := s.SessionQueue.Iterator()
+func (s *SessionService) FindSession(session *model.WSSession) (*model.WSSession, error) {
+	if !s.ContainsSession(session) {
+		return nil, errors.New("FindSession session is nil")
+	}
+	iterator := s.SessionQueue.IteratorWithNoRemoveItem()
 	for e := range iterator {
-		if e.Conn != conn {
-			//迭代器取出全部元素，现在回收,回收不符合条件的连接
-			_ = s.RestoreSession(e)
+		if e == session {
+			return e, nil
 		}
 	}
+	return nil, errors.New("FindSession session is nil")
 }
 
-func (s *SessionService) GetSessionWithConn(conn *websocket.Conn) (*model.WSSession, error) {
-	var session *model.WSSession
-	iterator := s.SessionQueue.Iterator()
-	for e := range iterator {
-		if e.Conn == conn {
-			session = e
-			continue
-		}
-		//迭代器取出全部元素，现在回收
-		_ = s.RestoreSession(e)
-	}
-	if session != nil {
-		return session, nil
-	}
-	return nil, errors.New("GetSessionWithConn session is nil")
-}
+func (s *SessionService) FindSessionWithConn(conn *websocket.Conn) (*model.WSSession, error) {
 
-func (s *SessionService) GetActiveSessionWithConn(conn *websocket.Conn) (*model.WSSession, error) {
-	var session *model.WSSession
-	iterator := s.ActiveSessionQueue.Iterator()
+	iterator := s.SessionQueue.IteratorWithNoRemoveItem()
 	for e := range iterator {
 		if e.Conn == conn {
-
-			session = e
-			continue
+			return e, nil
 		}
-		//迭代器取出全部元素，现在回收
-		_ = s.RestoreActiveSession(e)
 	}
-	if session != nil {
-		return session, nil
-	}
-	return nil, errors.New("GetSessionWithConn session is nil")
+	return nil, errors.New("FindSessionWithConn session is nil")
+}
+
+func (s *SessionService) ContainsActiveSession(session *model.WSSession) bool {
+	return s.ActiveSessionQueue.Contains(session)
 }
 
 func (s *SessionService) addSessionToActiveQueue(session *model.WSSession) {
@@ -200,25 +168,36 @@ func (s *SessionService) addSessionToActiveQueue(session *model.WSSession) {
 		return
 	}
 	if session.DeviceInfo == nil { //心跳
-		session, err := s.GetSessionWithConn(session.Conn)
-		if err == nil {
-			session.DeviceInfo.LastActiveTime = time.Now() //更新活跃时间
-			_ = s.RestoreSession(session)
+		has := s.ContainsActiveSession(session)
+		if !has {
+			//不存在,直接保存
+			session.DeviceInfo.LastActiveTime = time.Now() //记录活跃时间
+			_ = s.SaveActiveSession(session)
 		}
-
-	}
-
-	activeSession, err := s.GetActiveSessionWithConn(session.Conn)
-	if err != nil {
-		//不存在,直接保存
-		_ = s.SaveActiveSession(session)
-	} else {
-		//归还
-		_ = s.RestoreActiveSession(activeSession)
 	}
 
 }
 
 func (s *SessionService) UpdateRegisterInfo() {
+
+	iterator := s.ActiveSessionQueue.Iterator()
+	for e := range iterator {
+		deviceInfo, err := model.FindDeviceInfoByUserName(e.DeviceInfo.Username)
+		if err != nil {
+			e.DeviceInfo.Status = 101
+			e.DeviceInfo.Interval = 10 * 1000 //默认十秒
+		} else {
+
+			//影响内存中数据?
+			e.DeviceInfo.Status = deviceInfo.Status
+			e.DeviceInfo.Interval = deviceInfo.Interval
+
+		}
+		model.SaveDeviceInfo(e.DeviceInfo)
+	}
+
+}
+
+func (s *SessionService) FreeSession() {
 
 }

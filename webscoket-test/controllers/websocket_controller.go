@@ -37,7 +37,7 @@ func (w *WebSocketController) OnMessage(text []byte) {
 
 func (w *WebSocketController) OnClose(code int, text string) error {
 	logger.Printf("OnClose: %s %d", text, code)
-	service.GetSessionService().RemoveSession(w.conn)
+	service.GetSessionService().RemoveSessionWithConn(w.conn)
 	err := w.conn.Close()
 	if err != nil {
 		return err
@@ -47,7 +47,7 @@ func (w *WebSocketController) OnClose(code int, text string) error {
 
 func (w *WebSocketController) OnError(err error) {
 	logger.Printf("OnError: %v", err)
-	service.GetSessionService().RemoveSession(w.conn)
+	service.GetSessionService().RemoveSessionWithConn(w.conn)
 	_ = w.conn.Close()
 }
 

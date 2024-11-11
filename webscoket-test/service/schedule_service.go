@@ -7,17 +7,19 @@ import (
 
 func InitSchedule() {
 	crontab := cron.New(cron.WithSeconds())
-	ss := "*/2 * * * * ?"
-	_, err := crontab.AddFunc(ss, Test)
-	if err != nil {
-		logger.Info("err: %v\n", err)
-	}
+
+	crontab.AddFunc("*/10 * * * * ?", func() {
+		logger.Debug("开始 [UpdateRegisterInfo] 定时任务...")
+		GetSessionService().UpdateRegisterInfo()
+	})
+
+	crontab.AddFunc("*/1 * * * * ?", func() { //每秒都去看下设备是否符合释放条件
+		logger.Debug("开始 [FreeSeesion] 定时任务...")
+		//GetSessionService().FreeSeesion()
+	})
+
 	crontab.Start()
 	defer crontab.Stop()
 	select {}
 
-}
-
-func Test() {
-	logger.Info("test ")
 }
