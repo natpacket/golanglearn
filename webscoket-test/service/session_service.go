@@ -5,7 +5,9 @@ import (
 	"errors"
 	"github.com/adrianbrad/queue"
 	"github.com/gorilla/websocket"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	logger "github.com/sirupsen/logrus"
+	"strconv"
 	"sync"
 	"time"
 	"webscoket-test/model"
@@ -15,14 +17,17 @@ var sessionSvcSessionOnce sync.Once
 var sessionSvr *SessionService
 
 type SessionService struct {
-	SessionQueue       *queue.Linked[*model.WSSession]
+	DeviceNameQueue    *queue.Linked[string]
+	SessionMap         cmap.ConcurrentMap[string, *model.WSSession]
+	WaitSessionMap     cmap.ConcurrentMap[string, *model.WSSession]
 	ActiveSessionQueue *queue.Linked[*model.WSSession] //
 }
 
 func GetSessionService() *SessionService {
 	sessionSvcSessionOnce.Do(func() {
 		sessionSvr = &SessionService{
-			SessionQueue:       queue.NewLinked([]*model.WSSession{}),
+			DeviceNameQueue:    queue.NewLinked([]string{}),
+			SessionMap:         cmap.New[*model.WSSession](),
 			ActiveSessionQueue: queue.NewLinked([]*model.WSSession{}),
 		}
 	})
@@ -50,24 +55,33 @@ func (s *SessionService) registerSession(conn *websocket.Conn, data interface{})
 		},
 		Conn: conn,
 	}
-	_ = s.SaveSession(wsSession)
-	s.addSessionToActiveQueue(wsSession)
+	s.saveSession(wsSession)
+	s.AddSessionToActiveQueue(wsSession)
 }
 
-func (s *SessionService) SaveSession(session *model.WSSession) error {
+func (s *SessionService) saveSession(session *model.WSSession) {
 	//
 	if session != nil {
-		return errors.New("SaveSession: session is nil")
+		return
 	}
-	return s.SessionQueue.Offer(session)
+	key := session.DeviceInfo.Username
+	_ = s.DeviceNameQueue.Offer(key)
+	s.SessionMap.Set(key, session)
 }
 
-func (s *SessionService) RestoreSession(session *model.WSSession) error {
-
-	return s.SaveSession(session)
+func (s *SessionService) removeSession(session *model.WSSession) {
+	if session != nil {
+		key := session.DeviceInfo.Name
+		s.DeviceNameQueue.Remove(key)
+		s.SessionMap.Remove(key)
+	}
 }
 
-func (s *SessionService) SaveActiveSession(session *model.WSSession) error {
+func (s *SessionService) RestoreFinderSession(session *model.WSSession) {
+	s.saveSession(session)
+}
+
+func (s *SessionService) saveActiveSession(session *model.WSSession) error {
 	//
 	if session != nil {
 		return errors.New("SaveActiveSession: session is nil")
@@ -77,102 +91,72 @@ func (s *SessionService) SaveActiveSession(session *model.WSSession) error {
 
 func (s *SessionService) GetSession(username string, status int) (*model.WSSession, error) {
 
+	//这里不锁,可能两个线程同时进来拿到同一个session 这里不去考虑多线程抢占问题
 	session, err := s.GetSessionWithName(username)
 	if err != nil {
-
-		session, err = s.GetSessionWithStatus(status)
-		if err != nil {
-			return nil, err
-		} else {
-			s.RemoveSession(session)
-			return session, nil
+		count := s.DeviceNameQueue.Size() * 2
+		for i := 0; i < count; i++ {
+			username, _ := s.DeviceNameQueue.Get()
+			session, err = s.GetSessionWithName(username)
+			if err != nil {
+				return nil, errors.New("session is nil")
+			}
+			if session.DeviceInfo.Status == status {
+				return session, nil
+			} else {
+				//还给队列
+				_ = s.DeviceNameQueue.Offer(username)
+				continue
+			}
 		}
-
 	} else {
-		s.RemoveSession(session)
+		s.DeviceNameQueue.Remove(username)
+		return session, nil
 	}
 
-	return session, nil
+	return nil, errors.New("session is nil")
 }
 
 func (s *SessionService) GetSessionWithName(username string) (*model.WSSession, error) {
-	iterator := s.SessionQueue.IteratorWithNoRemoveItem()
-	for e := range iterator {
-		if e.DeviceInfo.Name == username {
-			return e, nil
-		}
+
+	session, ok := s.SessionMap.Get(username)
+	if ok {
+		return session, nil
 	}
 	return nil, errors.New("GetSessionWithName: session is nil")
 }
 
-func (s *SessionService) GetSessionWithStatus(status int) (*model.WSSession, error) {
+func (s *SessionService) getSessionWithConn(conn *websocket.Conn) (*model.WSSession, error) {
 
-	iterator := s.SessionQueue.IteratorWithNoRemoveItem()
-	for e := range iterator {
-		if e.DeviceInfo.Status == status {
-			return e, nil
+	for _, key := range s.SessionMap.Keys() {
+		session, ok := s.SessionMap.Get(key)
+		if ok && session.Conn == conn {
+			return session, nil
 		}
 	}
-
-	return nil, errors.New("GetSessionWithStatus: session is nil")
+	return nil, errors.New("GetSessionWithConn: session is nil")
 }
 
 func (s *SessionService) RemoveSessionWithConn(conn *websocket.Conn) {
-	session, err := s.FindSessionWithConn(conn)
+
+	session, err := s.getSessionWithConn(conn)
 	if err != nil {
-		s.RemoveSession(session)
-
-	}
-}
-func (s *SessionService) RemoveSession(session *model.WSSession) {
-	if session != nil {
-		s.SessionQueue.Remove(session)
+		//
+		s.removeSession(session)
 	}
 }
 
-func (s *SessionService) ContainsSession(session *model.WSSession) bool {
-	return s.SessionQueue.Contains(session)
-}
-
-func (s *SessionService) FindSession(session *model.WSSession) (*model.WSSession, error) {
-	if !s.ContainsSession(session) {
-		return nil, errors.New("FindSession session is nil")
-	}
-	iterator := s.SessionQueue.IteratorWithNoRemoveItem()
-	for e := range iterator {
-		if e == session {
-			return e, nil
-		}
-	}
-	return nil, errors.New("FindSession session is nil")
-}
-
-func (s *SessionService) FindSessionWithConn(conn *websocket.Conn) (*model.WSSession, error) {
-
-	iterator := s.SessionQueue.IteratorWithNoRemoveItem()
-	for e := range iterator {
-		if e.Conn == conn {
-			return e, nil
-		}
-	}
-	return nil, errors.New("FindSessionWithConn session is nil")
-}
-
-func (s *SessionService) ContainsActiveSession(session *model.WSSession) bool {
-	return s.ActiveSessionQueue.Contains(session)
-}
-
-func (s *SessionService) addSessionToActiveQueue(session *model.WSSession) {
+func (s *SessionService) AddSessionToActiveQueue(session *model.WSSession) {
 
 	if session == nil {
 		return
 	}
 	if session.DeviceInfo == nil { //心跳
-		has := s.ContainsActiveSession(session)
-		if !has {
+		_, err := s.getSessionWithConn(session.Conn)
+		if err != nil {
 			//不存在,直接保存
 			session.DeviceInfo.LastActiveTime = time.Now() //记录活跃时间
-			_ = s.SaveActiveSession(session)
+			_ = s.saveActiveSession(session)
 		}
 	}
 
@@ -198,6 +182,29 @@ func (s *SessionService) UpdateRegisterInfo() {
 
 }
 
+func (s *SessionService) WaitFreeSession(session *model.WSSession) {
+	if session == nil {
+		return
+	}
+	timestamp := time.Now().UnixMilli()
+	s.WaitSessionMap.Set(strconv.FormatInt(timestamp, 10), session)
+}
+
 func (s *SessionService) FreeSession() {
 
+	for _, key := range s.WaitSessionMap.Keys() {
+		session, ok := s.WaitSessionMap.Get(key)
+		if ok {
+			timestamp, err := strconv.ParseInt(key, 10, 64)
+			if err != nil {
+				continue
+			}
+			interval := session.DeviceInfo.Interval
+			currentTimeMillis := time.Now().UnixMilli()
+			delta := currentTimeMillis - timestamp
+			if interval < int(delta) {
+				s.RestoreFinderSession(session)
+			}
+		}
+	}
 }

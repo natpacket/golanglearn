@@ -8,14 +8,14 @@ import (
 func InitSchedule() {
 	crontab := cron.New(cron.WithSeconds())
 
-	crontab.AddFunc("*/10 * * * * ?", func() {
+	crontab.AddFunc("*/10 * * * * ?", func() { //每10秒都去看下设备是否符合释放条件
 		logger.Debug("开始 [UpdateRegisterInfo] 定时任务...")
 		GetSessionService().UpdateRegisterInfo()
 	})
 
-	crontab.AddFunc("*/1 * * * * ?", func() { //每秒都去看下设备是否符合释放条件
-		logger.Debug("开始 [FreeSeesion] 定时任务...")
-		//GetSessionService().FreeSeesion()
+	crontab.AddFunc("* * * * * ?", func() { //每秒都去看下设备是否符合释放条件
+		logger.Debug("开始 [FreeSession] 定时任务...")
+		GetSessionService().FreeSession()
 	})
 
 	crontab.Start()

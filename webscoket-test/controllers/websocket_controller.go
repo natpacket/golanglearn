@@ -45,12 +45,6 @@ func (w *WebSocketController) OnClose(code int, text string) error {
 	return nil
 }
 
-func (w *WebSocketController) OnError(err error) {
-	logger.Printf("OnError: %v", err)
-	service.GetSessionService().RemoveSessionWithConn(w.conn)
-	_ = w.conn.Close()
-}
-
 // @Summary websocket init
 // @router /test
 func (w *WebSocketController) WebSocketCtrl() {
@@ -62,7 +56,7 @@ func (w *WebSocketController) WebSocketCtrl() {
 		return
 	}
 
-	//defer conn.Close()
+	defer conn.Close()
 
 	w.conn = conn
 	conn.SetCloseHandler(w.OnClose)
@@ -71,7 +65,6 @@ func (w *WebSocketController) WebSocketCtrl() {
 	for {
 		messageType, msg, err := conn.ReadMessage()
 		if err != nil {
-			w.OnError(err)
 			return
 		}
 		if messageType == websocket.TextMessage {

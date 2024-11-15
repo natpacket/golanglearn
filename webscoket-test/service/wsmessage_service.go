@@ -42,7 +42,7 @@ func (w *WSMessageService) ProcessMessage(conn *websocket.Conn, data []byte) {
 		GetSessionService().registerSession(conn, wsMessage.Data)
 		break
 	case "heart":
-		GetSessionService().addSessionToActiveQueue(
+		GetSessionService().AddSessionToActiveQueue(
 			&model.WSSession{
 				Conn: conn,
 			})
